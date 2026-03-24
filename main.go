@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/charmbracelet/bubbles/textinput"
+	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"log"
@@ -20,29 +20,41 @@ func DefaultStyles() *Styles {
 }
 
 type model struct {
-	index       int
-	questions   []Question
-	width       int
-	height      int
-	answerField textinput.Model
-	styles      *Styles
+	index     int
+	questions []Question
+	width     int
+	height    int
+	styles    *Styles
+	done      bool
 }
 
 type Question struct {
 	question string
-	answer string
+	answer   string
+	input    Input
 }
 
 func NewQuestion(question string) Question {
 	return Question{question: question}
 }
 
+func NewShortQuestion(question string) Question {
+	q := NewQuestion(question)
+	field := NewShortAnswerField()
+	q.input = field
+	return q
+}
+
+func NewLongQuestion(question string) Question {
+	q := NewQuestion(question)
+	field := NewLongAnswerField()
+	q.input = field
+	return q
+}
+
 func New(questions []Question) *model {
 	styles := DefaultStyles()
-	answerField := textinput.New()
-	answerField.Placeholder = "Your answer here"
-	answerField.Focus()
-	return &model{questions: questions, answerField: answerField, styles: styles,}
+	return &model{questions: questions, styles: styles}
 }
 
 func (m model) Init() tea.Cmd {
@@ -61,19 +73,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "enter":
-			current.answer = m.answerField.Value()
-			m.answerField.SetValue("")
-			log.Printf("question: %s, answer: %s", current.question, current.answer)
+			if m.index == len(m.questions)-1 {
+				m.done = true
+			}
+			current.answer = current.input.Value()
 			m.Next()
-			m.answerField.SetValue("done!")
-			return m, nil
+			current.input.SetValue("done!")
+			return m, current.input.Blur
 		}
 	}
-	m.answerField, cmd = m.answerField.Update(msg)
+	current.input, cmd = current.input.Update(msg)
 	return m, cmd
 }
 
 func (m model) View() string {
+	current := m.questions[m.index]
+	if m.done {
+		var output string
+		for _, q := range m.questions {
+			output += fmt.Sprintf("%s: %s\n", q.question, q.answer)
+		}
+		return output
+	}
 	if m.width == 0 {
 		return "loading.."
 	}
@@ -85,13 +106,13 @@ func (m model) View() string {
 		lipgloss.JoinVertical(
 			lipgloss.Center,
 			m.questions[m.index].question,
-			m.styles.InputField.Render(m.answerField.View()),
+			m.styles.InputField.Render(current.input.View()),
 		),
 	)
 }
 
 func (m *model) Next() {
-	if m.index < len(m.questions) -1 {
+	if m.index < len(m.questions)-1 {
 		m.index++
 	} else {
 		m.index = 0
@@ -100,9 +121,9 @@ func (m *model) Next() {
 
 func main() {
 	questions := []Question{
-		NewQuestion("What is your name?"),
-		NewQuestion("What is my favorite TUI?"),
-		NewQuestion("What is your favorite quote?"),
+		NewShortQuestion("What is your name?"),
+		NewShortQuestion("What is my favorite TUI?"),
+		NewLongQuestion("What is your favorite quote?"),
 	}
 	m := New(questions)
 
